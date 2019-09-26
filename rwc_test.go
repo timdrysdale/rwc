@@ -1,13 +1,25 @@
 package rwc
 
 import (
+	"bytes"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/gorilla/websocket"
+	log "github.com/sirupsen/logrus"
 	"github.com/timdrysdale/hub"
 )
+
+func init() {
+
+	log.SetLevel(log.PanicLevel)
+
+}
 
 func TestInstantiateHub(t *testing.T) {
 
@@ -145,7 +157,7 @@ func TestAddDupeRule(t *testing.T) {
 
 	id := "rule0"
 	stream := "/stream/large"
-	destination := "ws://localhost:8081"
+	destination := "ws://localhost:8082"
 
 	r := &Rule{Id: id,
 		Stream:      stream,
@@ -269,4 +281,179 @@ func TestDeleteRule(t *testing.T) {
 	}
 
 	close(closed)
+}
+
+func TestSendMessage(t *testing.T) {
+
+	// Create test server with the echo handler.
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		echo(w, r)
+	}))
+	defer s.Close()
+
+	closed := make(chan struct{})
+
+	mh := hub.New()
+	go mh.Run(closed)
+
+	h := New(mh)
+	go h.Run(closed)
+
+	id := "rule0"
+	stream := "/stream/large"
+	destination := "ws" + strings.TrimPrefix(s.URL, "http")
+
+	r := &Rule{Id: id,
+		Stream:      stream,
+		Destination: destination}
+
+	h.Add <- *r
+
+	reply := make(chan hub.Message)
+
+	c := &hub.Client{Hub: mh, Name: "a", Topic: stream, Send: reply}
+
+	mh.Register <- c
+
+	time.Sleep(time.Millisecond)
+
+	payload := []byte("test message")
+
+	mh.Broadcast <- hub.Message{Data: payload, Type: websocket.TextMessage, Sender: *c, Sent: time.Now()}
+
+	msg := <-reply
+
+	if bytes.Compare(msg.Data, payload) != 0 {
+		t.Error("Got wrong message")
+	}
+
+	close(closed)
+
+}
+
+func TestSendMessageToChangingDestination(t *testing.T) {
+
+	// Create test server with the echo handler
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		echo(w, r)
+	}))
+	//	s := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	//		echo(w, r)
+	//	}))
+	//
+	//	url := "127.0.0.1:8099"
+	//	l, err := net.Listen("tcp", url)
+	//
+	//	if err != nil {
+	//		log.Fatal(err)
+	//	}
+	//
+	//	s.Listener.Close()
+	//	s.Listener = l
+	//	s.Start()
+	//	defer s.Close()
+
+	// Create test server with the echo handler.
+	s2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		shout(w, r)
+	}))
+
+	defer s2.Close()
+
+	closed := make(chan struct{})
+
+	mh := hub.New()
+	go mh.Run(closed)
+
+	h := New(mh)
+	go h.Run(closed)
+
+	id := "rule0"
+	stream := "/stream/large"
+	destination := "ws" + strings.TrimPrefix(s.URL, "http")
+
+	r := &Rule{Id: id,
+		Stream:      stream,
+		Destination: destination}
+
+	h.Add <- *r
+
+	reply := make(chan hub.Message)
+
+	c := &hub.Client{Hub: mh, Name: "a", Topic: stream, Send: reply}
+
+	mh.Register <- c
+
+	time.Sleep(time.Millisecond)
+
+	payload := []byte("test message")
+
+	mh.Broadcast <- hub.Message{Data: payload, Type: websocket.TextMessage, Sender: *c, Sent: time.Now()}
+
+	msg := <-reply
+
+	if bytes.Compare(msg.Data, payload) != 0 {
+		t.Error("Got wrong message")
+	}
+
+	destination = "ws" + strings.TrimPrefix(s2.URL, "http")
+
+	r = &Rule{Id: id,
+		Stream:      stream,
+		Destination: destination}
+
+	h.Add <- *r
+
+	mh.Register <- c
+
+	time.Sleep(time.Millisecond)
+
+	mh.Broadcast <- hub.Message{Data: payload, Type: websocket.TextMessage, Sender: *c, Sent: time.Now()}
+
+	msg = <-reply
+
+	if bytes.Compare(msg.Data, []byte("TEST MESSAGE")) != 0 {
+		t.Error("Did not change server")
+	}
+
+	close(closed)
+}
+
+var upgrader = websocket.Upgrader{}
+
+func echo(w http.ResponseWriter, r *http.Request) {
+	c, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer c.Close()
+	for {
+		mt, message, err := c.ReadMessage()
+		if err != nil {
+			break
+		}
+		err = c.WriteMessage(mt, message)
+		if err != nil {
+			break
+		}
+	}
+}
+
+func shout(w http.ResponseWriter, r *http.Request) {
+	c, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer c.Close()
+	for {
+		mt, message, err := c.ReadMessage()
+		if err != nil {
+			break
+		}
+		message = []byte(strings.ToUpper(string(message)))
+		err = c.WriteMessage(mt, message)
+		if err != nil {
+			break
+		}
+	}
 }
