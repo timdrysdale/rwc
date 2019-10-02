@@ -1,7 +1,6 @@
 package rwc
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/timdrysdale/agg"
@@ -59,7 +58,6 @@ func (h *Hub) Run(closed chan struct{}) {
 
 			//record the new rule for later convenience in reporting
 			h.Rules[rule.Id] = rule
-			fmt.Printf("Rules added...: %+v\n", h.Rules)
 
 			// create new reconnecting websocket client
 			ws := reconws.New()
@@ -81,14 +79,12 @@ func (h *Hub) Run(closed chan struct{}) {
 			h.Clients[rule.Id] = client
 
 			h.Messages.Register <- client.Messages //register for messages from hub
-			fmt.Println("RWC rule add preparation almost complete ")
 			go client.RelayIn()
 			go client.RelayOut()
 			go ws.Reconnect() //user must check stats to learn of errors
 			// an RPC style return on start is of limited value because clients are long lived
 			// so we'll need to check the stats later anyway; better just to do things one way
-			fmt.Println("RWC rule add preparation  complete ")
-			fmt.Printf("Rules still present?...: %+v\n", h.Rules)
+
 		case ruleId := <-h.Delete:
 			if client, ok := h.Clients[ruleId]; ok {
 				close(client.Websocket.Stop) //stop the websocket client
@@ -110,7 +106,6 @@ func (c *Client) RelayOut() {
 			break
 		case msg, ok := <-c.Messages.Send:
 			if ok {
-				fmt.Println("RelayOut sending message")
 				c.Websocket.Out <- reconws.WsMessage{Data: msg.Data, Type: msg.Type}
 			}
 		}
@@ -125,7 +120,6 @@ func (c *Client) RelayIn() {
 			break
 		case msg, ok := <-c.Websocket.In:
 			if ok {
-				fmt.Println("RelayIn broadcasting message")
 				c.Hub.Messages.Broadcast <- hub.Message{Data: msg.Data, Type: msg.Type, Sender: *c.Messages, Sent: time.Now()}
 			}
 		}
