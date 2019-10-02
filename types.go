@@ -16,9 +16,9 @@ type Hub struct {
 }
 
 type Rule struct {
-	Id          string
-	Stream      string
-	Destination string
+	Id          string `json:"id"`
+	Stream      string `json:"stream"`
+	Destination string `json:"destination"`
 }
 
 type Client struct {
