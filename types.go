@@ -1,12 +1,13 @@
 package rwc
 
 import (
+	"github.com/timdrysdale/agg"
 	"github.com/timdrysdale/hub"
 	"github.com/timdrysdale/reconws"
 )
 
 type Hub struct {
-	Messages  *hub.Hub
+	Messages  *agg.Hub
 	Clients   map[string]*Client //map Id string to client
 	Rules     map[string]Rule    //map Id string to Rule
 	Add       chan Rule

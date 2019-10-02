@@ -1,10 +1,12 @@
 package rwc
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -12,18 +14,20 @@ import (
 
 	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
+	"github.com/timdrysdale/agg"
 	"github.com/timdrysdale/hub"
+	"github.com/timdrysdale/reconws"
 )
 
 func init() {
 
-	log.SetLevel(log.PanicLevel)
+	log.SetLevel(log.InfoLevel)
 
 }
 
 func TestInstantiateHub(t *testing.T) {
 
-	mh := hub.New()
+	mh := agg.New()
 
 	h := New(mh)
 
@@ -49,14 +53,23 @@ func TestInstantiateHub(t *testing.T) {
 
 func TestAddRule(t *testing.T) {
 
-	mh := hub.New()
+	mh := agg.New()
 	h := New(mh)
+
 	closed := make(chan struct{})
+	defer close(closed)
+
 	go h.Run(closed)
+
+	// Create test server with the echo handler.
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		echo(w, r)
+	}))
+	defer s.Close()
 
 	id := "rule0"
 	stream := "/stream/large"
-	destination := "ws://localhost:8081"
+	destination := "ws" + strings.TrimPrefix(s.URL, "http") //s.URL //"ws://localhost:8081"
 
 	r := &Rule{Id: id,
 		Stream:      stream,
@@ -78,22 +91,37 @@ func TestAddRule(t *testing.T) {
 			t.Errorf("Rule has incorrect stream wanted/got %v %v\n", stream, h.Rules[id].Stream)
 		}
 	}
-	close(closed)
 }
 
 func TestAddRules(t *testing.T) {
 
-	closed := make(chan struct{})
+	suppressLog()
+	defer displayLog()
 
-	mh := hub.New()
+	closed := make(chan struct{})
+	defer close(closed)
+
+	mh := agg.New()
 	go mh.Run(closed)
 
 	h := New(mh)
 	go h.Run(closed)
 
+	// Create test server with the echo handler.
+	s1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		echo(w, r)
+	}))
+	defer s1.Close()
+
+	// Create test server with the echo handler.
+	s2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		echo(w, r)
+	}))
+	defer s2.Close()
+
 	id := "rule0"
 	stream := "/stream/large"
-	destination := "ws://localhost:8081"
+	destination := "ws" + strings.TrimPrefix(s1.URL, "http") //s1.URL //"ws://localhost:8081"
 
 	r := &Rule{Id: id,
 		Stream:      stream,
@@ -105,7 +133,7 @@ func TestAddRules(t *testing.T) {
 
 	id2 := "rule1"
 	stream2 := "/stream/medium"
-	destination2 := "ws://localhost:8082"
+	destination2 := "ws" + strings.TrimPrefix(s2.URL, "http") //s2.URL //"ws://localhost:8082"
 
 	r2 := &Rule{Id: id2,
 		Stream:      stream2,
@@ -142,22 +170,40 @@ func TestAddRules(t *testing.T) {
 			t.Errorf("Rule has incorrect stream wanted/got %v %v\n", stream2, h.Rules[id2].Stream)
 		}
 	}
-	close(closed)
+
+	time.Sleep(500 * time.Millisecond)
+
 }
 
 func TestAddDupeRule(t *testing.T) {
 
-	closed := make(chan struct{})
+	suppressLog()
+	defer displayLog()
 
-	mh := hub.New()
+	closed := make(chan struct{})
+	defer close(closed)
+
+	mh := agg.New()
 	go mh.Run(closed)
 
 	h := New(mh)
 	go h.Run(closed)
 
+	// Create test server with the echo handler.
+	s1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		echo(w, r)
+	}))
+	defer s1.Close()
+
+	// Create test server with the echo handler.
+	s2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		echo(w, r)
+	}))
+	defer s2.Close()
+
 	id := "rule0"
 	stream := "/stream/large"
-	destination := "ws://localhost:8082"
+	destination := "ws" + strings.TrimPrefix(s1.URL, "http") //s.URL //"ws://localhost:8082"
 
 	r := &Rule{Id: id,
 		Stream:      stream,
@@ -169,7 +215,7 @@ func TestAddDupeRule(t *testing.T) {
 
 	id = "rule0"
 	stream = "/stream/medium"
-	destination = "ws://localhost:8082"
+	destination = "ws" + strings.TrimPrefix(s2.URL, "http") //://localhost:8082"
 
 	r = &Rule{Id: id,
 		Stream:      stream,
@@ -192,22 +238,36 @@ func TestAddDupeRule(t *testing.T) {
 		}
 	}
 
-	close(closed)
 }
 
 func TestDeleteRule(t *testing.T) {
+	suppressLog()
+	defer displayLog()
 
 	closed := make(chan struct{})
+	defer close(closed)
 
-	mh := hub.New()
+	mh := agg.New()
 	go mh.Run(closed)
 
 	h := New(mh)
 	go h.Run(closed)
 
+	// Create test server with the echo handler.
+	s1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		echo(w, r)
+	}))
+	defer s1.Close()
+
+	// Create test server with the echo handler.
+	s2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		echo(w, r)
+	}))
+	defer s2.Close()
+
 	id := "rule0"
 	stream := "/stream/large"
-	destination := "ws://localhost:8081"
+	destination := "ws" + strings.TrimPrefix(s1.URL, "http") //s1.URL //"ws://localhost:8081"
 
 	r := &Rule{Id: id,
 		Stream:      stream,
@@ -219,7 +279,7 @@ func TestDeleteRule(t *testing.T) {
 
 	id2 := "rule1"
 	stream2 := "/stream/medium"
-	destination2 := "ws://localhost:8082"
+	destination2 := "ws" + strings.TrimPrefix(s2.URL, "http") //s2.URL //"ws://localhost:8082"
 
 	r2 := &Rule{Id: id2,
 		Stream:      stream2,
@@ -280,27 +340,34 @@ func TestDeleteRule(t *testing.T) {
 		}
 	}
 
-	close(closed)
 }
 
-func TestSendMessage(t *testing.T) {
+func TestSendMessageTopic(t *testing.T) {
+
+	time.Sleep(time.Second)
+	fmt.Println("-----------------------------------------------")
 
 	// Create test server with the echo handler.
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		echo(w, r)
+		shout(w, r)
 	}))
 	defer s.Close()
 
 	closed := make(chan struct{})
+	defer close(closed)
 
-	mh := hub.New()
+	mh := agg.New()
 	go mh.Run(closed)
+
+	time.Sleep(time.Millisecond)
 
 	h := New(mh)
 	go h.Run(closed)
 
+	fmt.Printf("Before config : Streams: %v\n", mh.Streams)
+
 	id := "rule0"
-	stream := "/stream/large"
+	stream := "medium"
 	destination := "ws" + strings.TrimPrefix(s.URL, "http")
 
 	r := &Rule{Id: id,
@@ -309,29 +376,181 @@ func TestSendMessage(t *testing.T) {
 
 	h.Add <- *r
 
-	reply := make(chan hub.Message)
+	time.Sleep(10 * time.Millisecond)
 
-	c := &hub.Client{Hub: mh, Name: "a", Topic: stream, Send: reply}
-
-	mh.Register <- c
+	fmt.Printf("after add rule : Streams: %v\n", mh.Streams)
+	fmt.Printf("after add rule : Rules: %+v\n", mh.Rules)
 
 	time.Sleep(time.Millisecond)
 
+	fmt.Println("added rule")
+
+	if _, ok := h.Rules[id]; !ok {
+		t.Error("Rule not registered in Rules")
+
+	}
+
+	reply := make(chan hub.Message)
+
+	c := &hub.Client{Hub: mh.Hub, Name: "a", Topic: stream, Send: reply}
+
+	h.Messages.Register <- c
+
+	fmt.Println("registered client")
+
+	time.Sleep(5 * time.Millisecond)
+
+	fmt.Printf("Streams: %v\n", h.Messages.Streams)
+	fmt.Printf("SubClients: %v\n", h.Messages.SubClients)
+	fmt.Printf("Clients: %v\n", h.Messages.Hub.Clients)
+
+	//if len(mh.Hub.Clients) != 1 {
+	//	t.Errorf("Wrong number of clients registered %d", len(mh.SubClients))
+	//} else {
+	//	fmt.Printf("Clients are registered in quanity of %d\n", len(mh.SubClients))
+	//}
+
 	payload := []byte("test message")
+	shoutedPayload := []byte("TEST MESSAGE")
 
 	mh.Broadcast <- hub.Message{Data: payload, Type: websocket.TextMessage, Sender: *c, Sent: time.Now()}
 
-	msg := <-reply
+	fmt.Println("broadcast messsage")
 
-	if bytes.Compare(msg.Data, payload) != 0 {
-		t.Error("Got wrong message")
+	//if len(mh.Hub.Clients) != 1 {
+	//	t.Errorf("Wrong number of clients registered %d", len(mh.
+	//		SubClients))
+	//}
+	//
+	select {
+	case msg := <-reply:
+		fmt.Println("got reply")
+		if bytes.Compare(msg.Data, shoutedPayload) != 0 {
+			t.Error("Got wrong message")
+		}
+
+	case <-time.After(10 * time.Millisecond):
+		t.Error("timed out waiting for message")
 	}
 
-	close(closed)
+	time.Sleep(time.Second)
 
 }
 
-func TestSendMessageToChangingDestination(t *testing.T) {
+func TestSendMessageStream(t *testing.T) {
+
+	time.Sleep(time.Second)
+	fmt.Println("-----------------------------------------------")
+
+	wsMsg := make(chan reconws.WsMessage)
+
+	// Create test server with the echo handler.
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		report(w, r, wsMsg)
+	}))
+	defer s.Close()
+
+	closed := make(chan struct{})
+	defer close(closed)
+
+	mh := agg.New()
+	go mh.Run(closed)
+
+	time.Sleep(time.Millisecond)
+
+	h := New(mh)
+	go h.Run(closed)
+
+	fmt.Printf("Before config : Streams: %v\n", mh.Streams)
+
+	id := "rule0"
+	stream := "/stream/medium"
+	destination := "ws" + strings.TrimPrefix(s.URL, "http")
+
+	r := &Rule{Id: id,
+		Stream:      stream,
+		Destination: destination}
+
+	h.Add <- *r
+
+	time.Sleep(10 * time.Millisecond)
+
+	fmt.Printf("after add rule : Streams: %v\n", mh.Streams)
+	fmt.Printf("after add rule : Rules: %+v\n", mh.Rules)
+
+	time.Sleep(time.Millisecond)
+
+	fmt.Println("added rule")
+
+	if _, ok := h.Rules[id]; !ok {
+		t.Error("Rule not registered in Rules")
+	}
+
+	// add rule for stream
+	feeds := []string{"video0", "audio"}
+	streamRule := &agg.Rule{Stream: stream, Feeds: feeds}
+
+	mh.Add <- *streamRule
+
+	// add clients/feeds to supply the stream
+	reply0 := make(chan hub.Message)
+	reply1 := make(chan hub.Message)
+
+	c0 := &hub.Client{Hub: mh.Hub, Name: "video0", Topic: feeds[0], Send: reply0}
+	c1 := &hub.Client{Hub: mh.Hub, Name: "audio", Topic: feeds[1], Send: reply1}
+
+	h.Messages.Register <- c0
+	h.Messages.Register <- c1
+
+	fmt.Println("registered clients")
+
+	time.Sleep(1 * time.Millisecond)
+
+	//fmt.Printf("Streams: %v\n", h.Messages.Streams)
+	//fmt.Printf("SubClients: %v\n", h.Messages.SubClients)
+	//fmt.Printf("Clients: %v\n", h.Messages.Hub.Clients)
+
+	payload := []byte("test message")
+	shoutedPayload := []byte("TEST MESSAGE")
+
+	// client sends a message ...
+	c0.Hub.Broadcast <- hub.Message{Data: payload, Type: websocket.TextMessage, Sender: *c0, Sent: time.Now()}
+	c1.Hub.Broadcast <- hub.Message{Data: shoutedPayload, Type: websocket.TextMessage, Sender: *c1, Sent: time.Now()}
+	time.Sleep(time.Millisecond)
+
+	fmt.Println("broadcast messsages")
+
+	// streams do not send replies to feeds!
+
+	gotMsg := []bool{false, false}
+	msgs := [][]byte{payload, shoutedPayload}
+
+	for i := 0; i < 2; i++ {
+		select {
+		case msg := <-wsMsg:
+			fmt.Printf("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&:%s\n", msg.Data)
+			for j, contents := range msgs {
+				if bytes.Compare(msg.Data, contents) == 0 {
+					gotMsg[j] = true
+				}
+			}
+		case <-time.After(5 * time.Millisecond):
+			t.Errorf("Timeout on getting %dth websocket message on", i)
+		}
+
+	}
+
+	for j, result := range gotMsg {
+		if result == false {
+			t.Errorf("Did not get %dth websocket mssage", j)
+		}
+	}
+
+	time.Sleep(time.Second)
+
+}
+
+func testSendMessageToChangingDestination(t *testing.T) {
 
 	// Create test server with the echo handler
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -362,7 +581,7 @@ func TestSendMessageToChangingDestination(t *testing.T) {
 
 	closed := make(chan struct{})
 
-	mh := hub.New()
+	mh := agg.New()
 	go mh.Run(closed)
 
 	h := New(mh)
@@ -380,7 +599,7 @@ func TestSendMessageToChangingDestination(t *testing.T) {
 
 	reply := make(chan hub.Message)
 
-	c := &hub.Client{Hub: mh, Name: "a", Topic: stream, Send: reply}
+	c := &hub.Client{Hub: mh.Hub, Name: "a", Topic: stream, Send: reply}
 
 	mh.Register <- c
 
@@ -439,6 +658,21 @@ func echo(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func report(w http.ResponseWriter, r *http.Request, msgChan chan reconws.WsMessage) {
+	c, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer c.Close()
+	for {
+		mt, message, err := c.ReadMessage()
+		if err != nil {
+			break
+		}
+		msgChan <- reconws.WsMessage{Data: message, Type: mt}
+	}
+}
+
 func shout(w http.ResponseWriter, r *http.Request) {
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -456,4 +690,14 @@ func shout(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+}
+
+func suppressLog() {
+	var ignore bytes.Buffer
+	logignore := bufio.NewWriter(&ignore)
+	log.SetOutput(logignore)
+}
+
+func displayLog() {
+	log.SetOutput(os.Stdout)
 }
