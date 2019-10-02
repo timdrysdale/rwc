@@ -93,6 +93,40 @@ func TestAddRule(t *testing.T) {
 	}
 }
 
+func TestCannotAddDeleteAllRule(t *testing.T) {
+
+	mh := agg.New()
+	h := New(mh)
+
+	closed := make(chan struct{})
+	defer close(closed)
+
+	go h.Run(closed)
+
+	// Create test server with the echo handler.
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		echo(w, r)
+	}))
+	defer s.Close()
+
+	id := "deleteAll"
+	stream := "/stream/large"
+	destination := "ws" + strings.TrimPrefix(s.URL, "http") //s.URL //"ws://localhost:8081"
+
+	r := &Rule{Id: id,
+		Stream:      stream,
+		Destination: destination}
+
+	h.Add <- *r
+
+	time.Sleep(time.Millisecond)
+
+	if _, ok := h.Rules[id]; ok {
+		t.Error("Rule deleteAll incorrectly accepted into Rules")
+
+	}
+}
+
 func TestAddRules(t *testing.T) {
 
 	suppressLog()
@@ -331,6 +365,92 @@ func TestDeleteRule(t *testing.T) {
 		if h.Rules[id2].Stream != stream2 {
 			t.Errorf("Rule has incorrect stream wanted/got %v %v\n", stream2, h.Rules[id2].Stream)
 		}
+	}
+}
+
+func TestDeleteAllRule(t *testing.T) {
+	suppressLog()
+	defer displayLog()
+
+	closed := make(chan struct{})
+	defer close(closed)
+
+	mh := agg.New()
+	go mh.Run(closed)
+
+	h := New(mh)
+	go h.Run(closed)
+
+	// Create test server with the echo handler.
+	s1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		echo(w, r)
+	}))
+	defer s1.Close()
+
+	// Create test server with the echo handler.
+	s2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		echo(w, r)
+	}))
+	defer s2.Close()
+
+	id := "rule0"
+	stream := "/stream/large"
+	destination := "ws" + strings.TrimPrefix(s1.URL, "http") //s1.URL //"ws://localhost:8081"
+
+	r := &Rule{Id: id,
+		Stream:      stream,
+		Destination: destination}
+
+	h.Add <- *r
+
+	time.Sleep(time.Millisecond)
+
+	id2 := "rule1"
+	stream2 := "/stream/medium"
+	destination2 := "ws" + strings.TrimPrefix(s2.URL, "http") //s2.URL //"ws://localhost:8082"
+
+	r2 := &Rule{Id: id2,
+		Stream:      stream2,
+		Destination: destination2}
+
+	h.Add <- *r2
+
+	time.Sleep(time.Millisecond)
+
+	if _, ok := h.Rules[id]; !ok {
+		t.Error("Rule not registered in Rules")
+
+	} else {
+
+		if h.Rules[id].Destination != destination {
+			t.Errorf("Rule has incorrect destination wanted/got %v %v\n", destination, h.Rules[id].Destination)
+		}
+		if h.Rules[id].Stream != stream {
+			t.Errorf("Rule has incorrect stream wanted/got %v %v\n", stream, h.Rules[id].Stream)
+		}
+	}
+	if _, ok := h.Rules[id2]; !ok {
+		t.Error("Rule not registered in Rules")
+
+	} else {
+
+		if h.Rules[id2].Destination != destination2 {
+			t.Errorf("Rule has incorrect destination wanted/got %v %v\n", destination2, h.Rules[id2].Destination)
+		}
+		if h.Rules[id2].Stream != stream2 {
+			t.Errorf("Rule has incorrect stream wanted/got %v %v\n", stream2, h.Rules[id2].Stream)
+		}
+	}
+
+	h.Delete <- "deleteAll"
+
+	time.Sleep(time.Millisecond)
+
+	if _, ok := h.Rules[id]; ok {
+		t.Error("Deleted rule registered in Rules")
+	}
+	if _, ok := h.Rules[id2]; ok {
+		t.Error("Deleted rule registered in Rules")
 	}
 }
 

@@ -40,6 +40,10 @@ func (h *Hub) Run(closed chan struct{}) {
 			return
 		case rule := <-h.Add:
 
+			if rule.Id == "deleteAll" {
+				break //reserved id (for deleting all rules)
+			}
+
 			// Allow multiple destinations for a stream;
 			// allow multiple streams per destination;
 			// allow only one client per rule.Id.
@@ -86,13 +90,24 @@ func (h *Hub) Run(closed chan struct{}) {
 			// so we'll need to check the stats later anyway; better just to do things one way
 
 		case ruleId := <-h.Delete:
-			if client, ok := h.Clients[ruleId]; ok {
-				close(client.Websocket.Stop) //stop the websocket client
-				close(client.Stopped)        //stop RelayIn() & RelayOut()
-				delete(h.Clients, ruleId)
-			}
-			if _, ok := h.Rules[ruleId]; ok {
-				delete(h.Rules, ruleId)
+
+			if ruleId == "deleteAll" {
+				for _, client := range h.Clients {
+					close(client.Websocket.Stop) //stop the websocket client
+					close(client.Stopped)        //stop RelayIn() & RelayOut()
+				}
+				h.Clients = make(map[string]*Client)
+				h.Rules = make(map[string]Rule)
+
+			} else {
+				if client, ok := h.Clients[ruleId]; ok {
+					close(client.Websocket.Stop) //stop the websocket client
+					close(client.Stopped)        //stop RelayIn() & RelayOut()
+					delete(h.Clients, ruleId)
+				}
+				if _, ok := h.Rules[ruleId]; ok {
+					delete(h.Rules, ruleId)
+				}
 			}
 		}
 	}
