@@ -72,7 +72,7 @@ func (h *Hub) Run(closed chan struct{}) {
 			messageClient := &hub.Client{Hub: h.Messages.Hub,
 				Name:  rule.Destination,
 				Topic: rule.Stream,
-				Send:  make(chan hub.Message),
+				Send:  make(chan hub.Message, 2),
 				Stats: hub.NewClientStats()}
 
 			client := &Client{Hub: h,
