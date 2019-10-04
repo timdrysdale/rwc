@@ -69,7 +69,7 @@ func TestAddRule(t *testing.T) {
 	defer s.Close()
 
 	id := "rule0"
-	stream := "/stream/large"
+	stream := "stream/large"
 	destination := "ws" + strings.TrimPrefix(s.URL, "http") //s.URL //"ws://localhost:8081"
 
 	r := &Rule{Id: id,
@@ -111,7 +111,7 @@ func TestCannotAddDeleteAllRule(t *testing.T) {
 	defer s.Close()
 
 	id := "deleteAll"
-	stream := "/stream/large"
+	stream := "stream/large"
 	destination := "ws" + strings.TrimPrefix(s.URL, "http") //s.URL //"ws://localhost:8081"
 
 	r := &Rule{Id: id,
@@ -155,7 +155,7 @@ func TestAddRules(t *testing.T) {
 	defer s2.Close()
 
 	id := "rule0"
-	stream := "/stream/large"
+	stream := "stream/large"
 	destination := "ws" + strings.TrimPrefix(s1.URL, "http") //s1.URL //"ws://localhost:8081"
 
 	r := &Rule{Id: id,
@@ -167,7 +167,7 @@ func TestAddRules(t *testing.T) {
 	time.Sleep(time.Millisecond)
 
 	id2 := "rule1"
-	stream2 := "/stream/medium"
+	stream2 := "stream/medium"
 	destination2 := "ws" + strings.TrimPrefix(s2.URL, "http") //s2.URL //"ws://localhost:8082"
 
 	r2 := &Rule{Id: id2,
@@ -237,7 +237,7 @@ func TestAddDupeRule(t *testing.T) {
 	defer s2.Close()
 
 	id := "rule0"
-	stream := "/stream/large"
+	stream := "stream/large"
 	destination := "ws" + strings.TrimPrefix(s1.URL, "http") //s.URL //"ws://localhost:8082"
 
 	r := &Rule{Id: id,
@@ -249,7 +249,7 @@ func TestAddDupeRule(t *testing.T) {
 	time.Sleep(time.Millisecond)
 
 	id = "rule0"
-	stream = "/stream/medium"
+	stream = "stream/medium"
 	destination = "ws" + strings.TrimPrefix(s2.URL, "http") //://localhost:8082"
 
 	r = &Rule{Id: id,
@@ -301,7 +301,7 @@ func TestDeleteRule(t *testing.T) {
 	defer s2.Close()
 
 	id := "rule0"
-	stream := "/stream/large"
+	stream := "stream/large"
 	destination := "ws" + strings.TrimPrefix(s1.URL, "http") //s1.URL //"ws://localhost:8081"
 
 	r := &Rule{Id: id,
@@ -313,7 +313,7 @@ func TestDeleteRule(t *testing.T) {
 	time.Sleep(time.Millisecond)
 
 	id2 := "rule1"
-	stream2 := "/stream/medium"
+	stream2 := "stream/medium"
 	destination2 := "ws" + strings.TrimPrefix(s2.URL, "http") //s2.URL //"ws://localhost:8082"
 
 	r2 := &Rule{Id: id2,
@@ -395,7 +395,7 @@ func TestDeleteAllRule(t *testing.T) {
 	defer s2.Close()
 
 	id := "rule0"
-	stream := "/stream/large"
+	stream := "stream/large"
 	destination := "ws" + strings.TrimPrefix(s1.URL, "http") //s1.URL //"ws://localhost:8081"
 
 	r := &Rule{Id: id,
@@ -407,7 +407,7 @@ func TestDeleteAllRule(t *testing.T) {
 	time.Sleep(time.Millisecond)
 
 	id2 := "rule1"
-	stream2 := "/stream/medium"
+	stream2 := "stream/medium"
 	destination2 := "ws" + strings.TrimPrefix(s2.URL, "http") //s2.URL //"ws://localhost:8082"
 
 	r2 := &Rule{Id: id2,
@@ -572,7 +572,7 @@ func TestSendMessageStream(t *testing.T) {
 
 	//destination rule
 	id := "rule0"
-	stream := "/stream/medium"
+	stream := "stream/medium"
 	destination0 := "ws" + strings.TrimPrefix(s0.URL, "http")
 
 	r0 := &Rule{Id: id,
@@ -692,7 +692,7 @@ func TestSendMessageToChangingDestination(t *testing.T) {
 
 	//destination rules
 	id := "rule0"
-	stream := "/stream/medium"
+	stream := "stream/medium"
 	destination0 := "ws" + strings.TrimPrefix(s0.URL, "http")
 	destination1 := "ws" + strings.TrimPrefix(s1.URL, "http")
 
@@ -833,148 +833,6 @@ func TestSendMessageToChangingDestination(t *testing.T) {
 	close(reply1)
 	wg.Wait()
 }
-
-/*func testSendMessageToChangingDestination(t *testing.T) {
-	wsMsg := make(chan reconws.WsMessage)
-
-	// Create test server with the reporting handler
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		report(w, r, wsMsg)
-	}))
-	defer s.Close()
-
-	closed := make(chan struct{})
-	defer close(closed)
-
-	mh := agg.New()
-	go mh.Run(closed)
-
-	time.Sleep(time.Millisecond)
-
-	h := New(mh)
-	go h.Run(closed)
-
-	id := "rule0"
-	stream := "/stream/medium"
-	destination := "ws" + strings.TrimPrefix(s.URL, "http")
-
-	r0 := &Rule{Id: id,
-		Stream:      stream,
-		Destination: destination}
-
-	h.Add <- *r0
-
-	time.Sleep(time.Millisecond)
-
-	if _, ok := h.Rules[id]; !ok {
-		t.Error("Rule not registered in Rules")
-	}
-
-	// add rule for stream
-	feeds := []string{"video0", "audio"}
-	streamRule := &agg.Rule{Stream: stream, Feeds: feeds}
-
-	mh.Add <- *streamRule
-
-	// add clients/feeds to supply the stream
-	reply0 := make(chan hub.Message, 10)
-	reply1 := make(chan hub.Message, 10)
-
-	c0 := &hub.Client{Hub: mh.Hub, Name: "video0", Topic: feeds[0], Send: reply0}
-	c1 := &hub.Client{Hub: mh.Hub, Name: "audio", Topic: feeds[1], Send: reply1}
-
-	h.Messages.Register <- c0
-	h.Messages.Register <- c1
-
-	time.Sleep(1 * time.Millisecond)
-
-	payload := []byte("test message")
-	shoutedPayload := []byte("TEST MESSAGE")
-
-	gotMsg := []bool{false, false}
-	msgs := [][]byte{payload, shoutedPayload}
-
-	go func() {
-		for i := 0; i < 2; i++ {
-			select {
-			case msg := <-wsMsg:
-				for j, contents := range msgs {
-					if bytes.Compare(msg.Data, contents) == 0 {
-						gotMsg[j] = true
-					}
-				}
-			case <-time.After(5 * time.Millisecond):
-				t.Errorf("Timeout on getting %dth websocket message on", i)
-			}
-		}
-
-		for j, result := range gotMsg {
-			if result == false {
-				t.Errorf("Did not get %dth websocket mssage", j)
-			}
-		}
-	}()
-	// client sends a message ...
-	c0.Hub.Broadcast <- hub.Message{Data: payload, Type: websocket.TextMessage, Sender: *c0, Sent: time.Now()}
-	c1.Hub.Broadcast <- hub.Message{Data: shoutedPayload, Type: websocket.TextMessage, Sender: *c1, Sent: time.Now()}
-	time.Sleep(time.Millisecond)
-
-	// Create test server with the reporting handler
-	wsMsg2 := make(chan reconws.WsMessage)
-	s2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		report(w, r, wsMsg2)
-	}))
-	defer s2.Close()
-
-	//update destination
-	destination = "ws" + strings.TrimPrefix(s2.URL, "http")
-
-	r = &Rule{Id: id,
-		Stream:      stream,
-		Destination: destination}
-
-	h.Add <- *r
-
-	time.Sleep(time.Millisecond) //allow time to reconfigure the destination
-
-	payload = []byte("another test message")
-	shoutedPayload = []byte("ANOTHER TEST MESSAGE")
-
-	go func() {
-		for i := 0; i < 12; i++ {
-			select {
-			case msg := <-wsMsg2:
-				for j, contents := range msgs {
-					if bytes.Compare(msg.Data, contents) == 0 {
-						gotMsg[j] = true
-					}
-				}
-			case <-time.After(5 * time.Millisecond):
-				t.Errorf("Timeout on getting %dth websocket message at new destination", i)
-			}
-		}
-		for j, result := range gotMsg {
-			if result == false {
-				t.Errorf("Did not get %dth websocket mssage at new destination", j)
-			}
-		}
-	}()
-
-	// client sends a message ...
-	c0.Hub.Broadcast <- hub.Message{Data: payload, Type: websocket.TextMessage, Sender: *c0, Sent: time.Now()}
-	c1.Hub.Broadcast <- hub.Message{Data: shoutedPayload, Type: websocket.TextMessage, Sender: *c1, Sent: time.Now()}
-	time.Sleep(time.Millisecond)
-
-	gotMsg = []bool{false, false}
-	msgs = [][]byte{payload, shoutedPayload}
-
-	for i := 0; i < 10; i++ {
-		c0.Hub.Broadcast <- hub.Message{Data: payload, Type: websocket.TextMessage, Sender: *c0, Sent: time.Now()}
-		c1.Hub.Broadcast <- hub.Message{Data: shoutedPayload, Type: websocket.TextMessage, Sender: *c1, Sent: time.Now()}
-		time.Sleep(10 * time.Millisecond)
-	}
-
-}*/
 
 var upgrader = websocket.Upgrader{}
 

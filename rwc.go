@@ -3,7 +3,6 @@ package rwc
 import (
 	"time"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/timdrysdale/agg"
 	"github.com/timdrysdale/hub"
 	"github.com/timdrysdale/reconws"
@@ -122,10 +121,8 @@ LOOP:
 	for {
 		select {
 		case <-c.Stopped:
-			log.WithField("client", c.Messages.Topic).Debug("RWC Relay Out breaking")
 			break LOOP
 		case msg, ok := <-c.Messages.Send:
-			log.WithField("client", c.Messages.Topic).Debug("RWC Relay Out sending")
 			if ok {
 				c.Websocket.Out <- reconws.WsMessage{Data: msg.Data, Type: msg.Type}
 			}
@@ -139,10 +136,8 @@ LOOP:
 	for {
 		select {
 		case <-c.Stopped:
-			log.WithField("client", c.Messages.Topic).Debug("RWC Relay In breaking")
 			break LOOP
 		case msg, ok := <-c.Websocket.In:
-			log.WithField("client", c.Messages.Topic).Debug("RWC Relay Out sending")
 			if ok {
 				c.Hub.Messages.Broadcast <- hub.Message{Data: msg.Data, Type: msg.Type, Sender: *c.Messages, Sent: time.Now()}
 			}
