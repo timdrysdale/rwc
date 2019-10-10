@@ -1,6 +1,8 @@
 package rwc
 
 import (
+	"context"
+
 	"github.com/timdrysdale/agg"
 	"github.com/timdrysdale/hub"
 	"github.com/timdrysdale/reconws"
@@ -24,6 +26,7 @@ type Rule struct {
 type Client struct {
 	Hub       *Hub //can access messaging hub via <client>.Hub.Messages
 	Messages  *hub.Client
-	Stopped   chan struct{}
+	Context   context.Context
+	Cancel    context.CancelFunc
 	Websocket *reconws.ReconWs
 }

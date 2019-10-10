@@ -1,6 +1,7 @@
 package rwc
 
 import (
+	"context"
 	"time"
 
 	"github.com/timdrysdale/agg"
@@ -52,7 +53,7 @@ func (h *Hub) Run(closed chan struct{}) {
 			if client, ok := h.Clients[rule.Id]; ok {
 				client = h.Clients[rule.Id]
 				close(client.Websocket.Stop) //stop the websocket client
-				close(client.Stopped)        //stop RelayIn() & RelayOut()
+				client.Cancel()              //stop RelayIn() & RelayOut()
 				delete(h.Clients, rule.Id)
 			}
 			if _, ok := h.Rules[rule.Id]; ok {
@@ -75,17 +76,21 @@ func (h *Hub) Run(closed chan struct{}) {
 				Send:  make(chan hub.Message, 2),
 				Stats: hub.NewClientStats()}
 
+			ctx, cancel := context.WithCancel(context.Background())
 			client := &Client{Hub: h,
 				Messages:  messageClient,
-				Stopped:   make(chan struct{}),
+				Context:   ctx,
+				Cancel:    cancel,
 				Websocket: ws}
 
 			h.Clients[rule.Id] = client
 
 			h.Messages.Register <- client.Messages //register for messages from hub
-			go client.RelayIn()
-			go client.RelayOut()
-			go ws.Reconnect() //user must check stats to learn of errors
+
+			go client.RelayIn(client.Context)
+			go client.RelayOut(client.Context)
+			go ws.Reconnect(client.Context)
+			//user must check stats to learn of errors
 			// an RPC style return on start is of limited value because clients are long lived
 			// so we'll need to check the stats later anyway; better just to do things one way
 
@@ -94,7 +99,7 @@ func (h *Hub) Run(closed chan struct{}) {
 			if ruleId == "deleteAll" {
 				for _, client := range h.Clients {
 					close(client.Websocket.Stop) //stop the websocket client
-					close(client.Stopped)        //stop RelayIn() & RelayOut()
+					client.Cancel()              //stop RelayIn() & RelayOut()
 				}
 				h.Clients = make(map[string]*Client)
 				h.Rules = make(map[string]Rule)
@@ -102,7 +107,7 @@ func (h *Hub) Run(closed chan struct{}) {
 			} else {
 				if client, ok := h.Clients[ruleId]; ok {
 					close(client.Websocket.Stop) //stop the websocket client
-					close(client.Stopped)        //stop RelayIn() & RelayOut()
+					client.Cancel()              //stop RelayIn() & RelayOut()
 					delete(h.Clients, ruleId)
 				}
 				if _, ok := h.Rules[ruleId]; ok {
@@ -116,11 +121,11 @@ func (h *Hub) Run(closed chan struct{}) {
 //use label to break from the for?
 
 // relay messages from the hub to the websocket client until stopped
-func (c *Client) RelayOut() {
+func (c *Client) RelayOut(ctx context.Context) {
 LOOP:
 	for {
 		select {
-		case <-c.Stopped:
+		case <-ctx.Done():
 			break LOOP
 		case msg, ok := <-c.Messages.Send:
 			if ok {
@@ -131,11 +136,11 @@ LOOP:
 }
 
 // relay messages from websocket server to the hub until stopped
-func (c *Client) RelayIn() {
+func (c *Client) RelayIn(ctx context.Context) {
 LOOP:
 	for {
 		select {
-		case <-c.Stopped:
+		case <-ctx.Done():
 			break LOOP
 		case msg, ok := <-c.Websocket.In:
 			if ok {
