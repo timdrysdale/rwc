@@ -31,7 +31,7 @@ func (h *Hub) Run(closed chan struct{}) {
 		//may panic if a client is individually closed just before exiting
 		//but if exiting, a panic is less of an issue
 		for _, client := range h.Clients {
-			close(client.Websocket.Stop)
+			client.Cancel()
 		}
 	}()
 
@@ -52,8 +52,7 @@ func (h *Hub) Run(closed chan struct{}) {
 			// because it just became superseded
 			if client, ok := h.Clients[rule.Id]; ok {
 				client = h.Clients[rule.Id]
-				close(client.Websocket.Stop) //stop the websocket client
-				client.Cancel()              //stop RelayIn() & RelayOut()
+				client.Cancel() //stop RelayIn() & RelayOut()
 				delete(h.Clients, rule.Id)
 			}
 			if _, ok := h.Rules[rule.Id]; ok {
@@ -67,7 +66,7 @@ func (h *Hub) Run(closed chan struct{}) {
 			// create new reconnecting websocket client
 			ws := reconws.New()
 
-			ws.Url = rule.Destination //no sanity check - don't dupe ws functionality
+			urlStr := rule.Destination //no sanity check - don't dupe ws functionality
 
 			// create client to handle stream messages
 			messageClient := &hub.Client{Hub: h.Messages.Hub,
@@ -89,7 +88,7 @@ func (h *Hub) Run(closed chan struct{}) {
 
 			go client.RelayIn(client.Context)
 			go client.RelayOut(client.Context)
-			go ws.Reconnect(client.Context)
+			go ws.Reconnect(client.Context, urlStr)
 			//user must check stats to learn of errors
 			// an RPC style return on start is of limited value because clients are long lived
 			// so we'll need to check the stats later anyway; better just to do things one way
@@ -98,16 +97,14 @@ func (h *Hub) Run(closed chan struct{}) {
 
 			if ruleId == "deleteAll" {
 				for _, client := range h.Clients {
-					close(client.Websocket.Stop) //stop the websocket client
-					client.Cancel()              //stop RelayIn() & RelayOut()
+					client.Cancel() //stop RelayIn() & RelayOut()
 				}
 				h.Clients = make(map[string]*Client)
 				h.Rules = make(map[string]Rule)
 
 			} else {
 				if client, ok := h.Clients[ruleId]; ok {
-					close(client.Websocket.Stop) //stop the websocket client
-					client.Cancel()              //stop RelayIn() & RelayOut()
+					client.Cancel() //stop RelayIn() & RelayOut()
 					delete(h.Clients, ruleId)
 				}
 				if _, ok := h.Rules[ruleId]; ok {
