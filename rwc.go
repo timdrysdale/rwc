@@ -52,6 +52,7 @@ func (h *Hub) Run(closed chan struct{}) {
 			// because it just became superseded
 			if client, ok := h.Clients[rule.Id]; ok {
 				client = h.Clients[rule.Id]
+				h.Messages.Unregister <- client.Messages
 				client.Cancel() //stop RelayIn() & RelayOut()
 				delete(h.Clients, rule.Id)
 			}
@@ -97,6 +98,7 @@ func (h *Hub) Run(closed chan struct{}) {
 
 			if ruleId == "deleteAll" {
 				for _, client := range h.Clients {
+					h.Messages.Unregister <- client.Messages
 					client.Cancel() //stop RelayIn() & RelayOut()
 				}
 				h.Clients = make(map[string]*Client)
@@ -104,6 +106,7 @@ func (h *Hub) Run(closed chan struct{}) {
 
 			} else {
 				if client, ok := h.Clients[ruleId]; ok {
+					h.Messages.Unregister <- client.Messages
 					client.Cancel() //stop RelayIn() & RelayOut()
 					delete(h.Clients, ruleId)
 				}
